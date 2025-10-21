@@ -3,11 +3,13 @@
 echo "Running API Tests..."
 echo "===================="
 
-# Install dependencies
-pip install -r backend/requirements.txt
+# Install specific compatible versions
+python3 -m pip install "httpx>=0.21.0,<0.24.0"
+python3 -m pip install -r backend/requirements.txt
+python3 -m pip install pytest
 
 # Run tests
-pytest tests/test_api.py -v
+python3 -m pytest tests/ -v
 
 if [ $? -eq 0 ]; then
     echo "✅ All tests passed!"
