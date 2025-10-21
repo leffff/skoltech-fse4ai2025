@@ -3,10 +3,8 @@
 echo "Running API Tests..."
 echo "===================="
 
-# Install specific compatible versions
-python3 -m pip install "httpx>=0.21.0,<0.24.0"
-python3 -m pip install -r backend/requirements.txt
-python3 -m pip install pytest
+# Install the project in editable mode (this includes pytest, pytest-cov, etc.)
+python3 -m pip install --user -e .
 
 # Run tests
 python3 -m pytest tests/ -v
