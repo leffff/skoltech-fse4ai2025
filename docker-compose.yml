@@ -1,40 +1,39 @@
-version: '3.8'
-
+# docker-compose.yml
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      - PYTHONUNBUFFERED=1
     volumes:
       - ./backend/uploads:/app/uploads
+      - huggingface_cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s  # Give more time for model to load
+      start_period: 60s
     networks:
-      - blip-network
+      - blip-net
 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
       - "8501:8501"
     environment:
-      - BACKEND_URL=http://backend:8000  # Use service name for internal communication
+      - BACKEND_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
-      - blip-network
+      - blip-net
 
 networks:
-  blip-network:
-    driver: bridge
+  blip-net:
+
+volumes:
+  huggingface_cache:
