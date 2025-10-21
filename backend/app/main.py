@@ -84,9 +84,33 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    """Enhanced health check that verifies model is actually loaded"""
     if model is None or processor is None:
-        return {"status": "unhealthy", "error": "BLIP model not loaded"}
-    return {"status": "healthy"}
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": "BLIP model not loaded"}
+        )
+
+    # Test model with a simple operation
+    try:
+        # Create a small test image
+        test_image = Image.new('RGB', (10, 10), color='red')
+        inputs = processor(test_image, return_tensors="pt")
+
+        # Quick test generation
+        with torch.no_grad():
+            _ = model.generate(**inputs, max_length=5, num_beams=1)
+
+        return {
+            "status": "healthy",
+            "model_loaded": True,
+            "device": "cuda" if torch.cuda.is_available() else "cpu"
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": f"Model test failed: {str(e)}"}
+        )
 
 
 @app.get("/model-info")
