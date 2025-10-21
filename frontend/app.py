@@ -1,147 +1,112 @@
-import base64
-import io
 import os
-
 import requests
 import streamlit as st
 from PIL import Image
 
+# Page config
 st.set_page_config(
     page_title="BLIP Image Captioning",
     page_icon="📝",
     layout="wide"
 )
 
-
 def main():
     st.title("📝 BLIP Image Captioning")
 
-    # Sidebar - Use environment variable for backend URL in Docker
-    st.sidebar.title("Settings")
+    # Sidebar settings
+    st.sidebar.title("⚙️ Settings")
+    default_backend = os.getenv("BACKEND_URL", "http://localhost:8000")
+    api_url = st.sidebar.text_input("Backend API URL", value=default_backend)
 
-    # In Docker, backend service is accessible via service name 'backend'
-    # For local development, fall back to localhost
-    default_backend = os.getenv('BACKEND_URL', 'http://localhost:8000')
-    api_url = st.sidebar.text_input("Backend API URL", default_backend)
+    # Caption generation parameters
+    max_length = st.sidebar.slider("Max Caption Length", min_value=10, max_value=150, value=100)
+    num_beams = st.sidebar.slider("Number of Beams", min_value=1, max_value=10, value=5)
 
-    max_length = st.sidebar.slider("Max Caption Length", 10, 100, 50)
-    num_beams = st.sidebar.slider("Number of Beams", 1, 10, 5)
-
-    # File upload
+    # File uploader
     uploaded_file = st.file_uploader(
-        "Choose an image...",
-        type=['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'webp']
+        "Upload an image (JPG, PNG, BMP, TIFF, WEBP)",
+        type=["jpg", "jpeg", "png", "bmp", "tiff", "webp"]
     )
 
-    col1, col2 = st.columns(2)
+    if uploaded_file is not None:
+        # Display uploaded image once
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    with col1:
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
+        if st.button("Generate Caption", type="primary"):
+            with st.spinner("Generating caption..."):
+                try:
+                    # Health check
+                    health_resp = requests.get(f"{api_url}/health", timeout=10)
+                    if health_resp.status_code != 200:
+                        st.error("❌ Backend is unhealthy. Check logs.")
+                        return
 
-            if st.button("Generate Caption", type="primary"):
-                with st.spinner("Generating caption..."):
-                    try:
-                        # Test backend connection first
-                        st.info("Testing backend connection...")
-                        health_response = requests.get(f"{api_url}/health", timeout=10)
+                    # Send image to backend
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                    response = requests.post(
+                        f"{api_url}/caption/",
+                        files=files,
+                        params={"max_length": max_length, "num_beams": num_beams},
+                        timeout=60
+                    )
 
-                        if health_response.status_code == 200:
-                            st.success("✅ Backend connected successfully!")
-                        else:
-                            st.error(f"❌ Backend health check failed: {health_response.status_code}")
-                            return
+                    if response.status_code == 200:
+                        result = response.json()
+                        caption = result["caption"]
 
-                        # Prepare the file for upload
-                        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                        st.subheader("Generated Caption")
+                        st.success(f'**"{caption}"**')
 
-                        st.info("🔄 Generating caption... This may take a moment.")
-                        response = requests.post(
-                            f"{api_url}/caption/",
-                            files=files,
-                            params={"max_length": max_length, "num_beams": num_beams},
-                            timeout=60  # Increased timeout for model processing
-                        )
+                        # Optional: show generation params
+                        with st.expander("📊 Generation Parameters"):
+                            st.json(result["parameters"])
 
-                        if response.status_code == 200:
-                            result = response.json()
+                    else:
+                        error_detail = response.json().get("detail", "Unknown error")
+                        st.error(f"❌ Failed to generate caption: {error_detail}")
 
-                            with col2:
-                                st.subheader("Results")
+                except requests.exceptions.ConnectionError:
+                    st.error(
+                        "❌ Cannot connect to backend.\n\n"
+                        "**Tips:**\n"
+                        "- In Docker: use `http://backend:8000`\n"
+                        "- Locally: ensure backend runs on `http://localhost:8000`\n"
+                        "- Check `docker-compose logs backend`"
+                    )
+                except requests.exceptions.Timeout:
+                    st.error("⏰ Request timed out. The model may still be loading or processing.")
+                except Exception as e:
+                    st.error(f"💥 Unexpected error: {str(e)}")
 
-                                # Display processed image
-                                processed_image_data = base64.b64decode(result["processed_image"])
-                                processed_image = Image.open(io.BytesIO(processed_image_data))
-                                st.image(processed_image, caption="Processed Image", use_column_width=True)
+    # Backend status indicator
+    st.sidebar.markdown("### 🌐 Backend Status")
+    try:
+        status = requests.get(f"{api_url}/health", timeout=5)
+        if status.status_code == 200:
+            st.sidebar.success("✅ Healthy")
+        else:
+            st.sidebar.error("❌ Unhealthy")
+    except:
+        st.sidebar.error("❌ Offline")
 
-                                # Display caption
-                                st.subheader("Generated Caption:")
-                                st.success(f'**"{result["caption"]}"**')
-
-                                # Show model info
-                                with st.expander("📊 Model Information"):
-                                    st.json(result["parameters"])
-
-                        else:
-                            error_detail = response.json().get('detail', 'Unknown error')
-                            st.error(f"❌ Caption generation failed: {error_detail}")
-
-                    except requests.exceptions.ConnectionError:
-                        st.error("""
-                        ❌ Cannot connect to backend service. 
-
-                        **Troubleshooting steps:**
-                        1. Make sure the backend is running
-                        2. Check if the backend URL is correct
-                        3. In Docker, use 'http://backend:8000' as the backend URL
-                        4. Check Docker logs: `docker-compose logs backend`
-                        """)
-                    except requests.exceptions.Timeout:
-                        st.error(
-                            "⏰ Request timed out. The backend might be processing a large image or loading the model.")
-                    except Exception as e:
-                        st.error(f"❌ Unexpected error: {str(e)}")
-
-    # Display current backend status
-    with st.sidebar:
-        st.subheader("Backend Status")
-        try:
-            status_response = requests.get(f"{api_url}/health", timeout=5)
-            if status_response.status_code == 200:
-                st.success("✅ Backend is healthy")
-            else:
-                st.error("❌ Backend is not healthy")
-        except:
-            st.error("❌ Cannot reach backend")
-
-    # Instructions
-    with st.expander("📖 How to use & Troubleshooting"):
+    # Help section
+    with st.expander("📖 Help & Tips"):
         st.markdown("""
-        ### Usage:
-        1. **Upload an image** (JPG, PNG, BMP, TIFF, WEBP)
-        2. **Click 'Generate Caption'**
-        3. **View the generated description**
+        ### How to Use
+        1. Upload an image.
+        2. Adjust caption length if needed (default: 100 tokens).
+        3. Click **Generate Caption**.
 
-        ### Troubleshooting:
+        ### Notes
+        - First run may take 1–2 minutes (model download).
+        - Captions are longer by default now (up to 150 tokens).
+        - The image is shown only once—no duplicate display.
 
-        **If you see connection errors:**
-
-        **Docker Environment:**
-        - Backend URL should be: `http://backend:8000`
-        - Run with: `docker-compose up --build`
-
-        **Local Development:**
-        - Backend URL should be: `http://localhost:8000`
-        - Start backend first: `./run_backend.sh`
-        - Then start frontend: `./run_frontend.sh`
-
-        **First Time Setup:**
-        - The first request might take 1-2 minutes to download the BLIP model
-        - Subsequent requests will be faster
-        - Check logs for detailed error information
+        ### Docker vs Local
+        - **Docker**: Backend URL = `http://backend:8000`
+        - **Local**: Backend URL = `http://localhost:8000`
         """)
-
 
 if __name__ == "__main__":
     main()
