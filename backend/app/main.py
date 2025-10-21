@@ -1,13 +1,14 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from transformers import BlipProcessor, BlipForConditionalGeneration
-import torch
-from PIL import Image
-import io
 import base64
+import io
 import os
 from datetime import datetime
+
+import torch
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from PIL import Image
+from transformers import BlipForConditionalGeneration, BlipProcessor
 
 app = FastAPI(title="BLIP Image Captioning API", version="1.0.0")
 
@@ -33,12 +34,16 @@ def load_blip_model():
         print("Loading BLIP model...")
 
         # Load processor and model
-        processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-        model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+        processor = BlipProcessor.from_pretrained(
+            "Salesforce/blip-image-captioning-base"
+        )
+        model = BlipForConditionalGeneration.from_pretrained(
+            "Salesforce/blip-image-captioning-base"
+        )
 
         # Use GPU if available
         if torch.cuda.is_available():
-            model = model.to('cuda')
+            model = model.to("cuda")
             print("BLIP model loaded on GPU")
         else:
             print("BLIP model loaded on CPU")
@@ -58,7 +63,7 @@ model_loaded = load_blip_model()
 def validate_image_file(file: UploadFile) -> bool:
     """Validate that the uploaded file is actually an image"""
     # Check filename extension
-    allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
     file_extension = os.path.splitext(file.filename.lower())[1]
 
     if file_extension not in allowed_extensions:
@@ -88,13 +93,13 @@ async def health_check():
     if model is None or processor is None:
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "error": "BLIP model not loaded"}
+            content={"status": "unhealthy", "error": "BLIP model not loaded"},
         )
 
     # Test model with a simple operation
     try:
         # Create a small test image
-        test_image = Image.new('RGB', (10, 10), color='red')
+        test_image = Image.new("RGB", (10, 10), color="red")
         inputs = processor(test_image, return_tensors="pt")
 
         # Quick test generation
@@ -104,12 +109,12 @@ async def health_check():
         return {
             "status": "healthy",
             "model_loaded": True,
-            "device": "cuda" if torch.cuda.is_available() else "cpu"
+            "device": "cuda" if torch.cuda.is_available() else "cpu",
         }
     except Exception as e:
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "error": f"Model test failed: {str(e)}"}
+            content={"status": "unhealthy", "error": f"Model test failed: {str(e)}"},
         )
 
 
@@ -123,12 +128,14 @@ async def model_info():
         "model_name": "Salesforce/blip-image-captioning-base",
         "model_type": "BLIP",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "status": "loaded"
+        "status": "loaded",
     }
 
 
 @app.post("/caption/")
-async def generate_caption(file: UploadFile = File(...), max_length: int = 50, num_beams: int = 5):
+async def generate_caption(
+    file: UploadFile = File(...), max_length: int = 50, num_beams: int = 5
+):
     """Generate caption for uploaded image"""
     if model is None or processor is None:
         raise HTTPException(status_code=500, detail="BLIP model not loaded")
@@ -141,7 +148,7 @@ async def generate_caption(file: UploadFile = File(...), max_length: int = 50, n
         if not validate_image_file(file):
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type. Allowed types: JPG, JPEG, PNG, BMP, TIFF, WEBP"
+                detail=f"Invalid file type. Allowed types: JPG, JPEG, PNG, BMP, TIFF, WEBP",
             )
 
         # Read image data
@@ -150,23 +157,22 @@ async def generate_caption(file: UploadFile = File(...), max_length: int = 50, n
         # 2. Check file content to ensure it's actually an image
         if not validate_image_content(image_data):
             raise HTTPException(
-                status_code=400,
-                detail="File content is not a valid image"
+                status_code=400, detail="File content is not a valid image"
             )
 
         # Reset file pointer after reading
         image = Image.open(io.BytesIO(image_data))
 
         # Convert to RGB if necessary
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
+        if image.mode != "RGB":
+            image = image.convert("RGB")
 
         # Preprocess image
         inputs = processor(image, return_tensors="pt")
 
         # Use GPU if available
         if torch.cuda.is_available():
-            inputs = {k: v.to('cuda') for k, v in inputs.items()}
+            inputs = {k: v.to("cuda") for k, v in inputs.items()}
 
         # Generate caption
         with torch.no_grad():
@@ -174,7 +180,7 @@ async def generate_caption(file: UploadFile = File(...), max_length: int = 50, n
                 **inputs,
                 max_length=max_length,
                 num_beams=num_beams,
-                early_stopping=True
+                early_stopping=True,
             )
 
         # Decode caption
@@ -183,17 +189,16 @@ async def generate_caption(file: UploadFile = File(...), max_length: int = 50, n
         # Convert image to base64 for response
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG")
-        image_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        image_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-        return JSONResponse(content={
-            "caption": caption,
-            "processed_image": image_b64,
-            "model_used": "Salesforce/blip-image-captioning-base",
-            "parameters": {
-                "max_length": max_length,
-                "num_beams": num_beams
+        return JSONResponse(
+            content={
+                "caption": caption,
+                "processed_image": image_b64,
+                "model_used": "Salesforce/blip-image-captioning-base",
+                "parameters": {"max_length": max_length, "num_beams": num_beams},
             }
-        })
+        )
 
     except HTTPException:
         # Re-raise HTTP exceptions
@@ -204,11 +209,11 @@ async def generate_caption(file: UploadFile = File(...), max_length: int = 50, n
 
 @app.post("/caption-detailed/")
 async def generate_detailed_caption(
-        file: UploadFile = File(...),
-        max_length: int = 50,
-        num_beams: int = 5,
-        temperature: float = 1.0,
-        do_sample: bool = False
+    file: UploadFile = File(...),
+    max_length: int = 50,
+    num_beams: int = 5,
+    temperature: float = 1.0,
+    do_sample: bool = False,
 ):
     """Generate caption with more parameters"""
     if model is None or processor is None:
@@ -221,7 +226,7 @@ async def generate_detailed_caption(
         if not validate_image_file(file):
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type. Allowed types: JPG, JPEG, PNG, BMP, TIFF, WEBP"
+                detail=f"Invalid file type. Allowed types: JPG, JPEG, PNG, BMP, TIFF, WEBP",
             )
 
         # Read image data
@@ -229,21 +234,20 @@ async def generate_detailed_caption(
 
         if not validate_image_content(image_data):
             raise HTTPException(
-                status_code=400,
-                detail="File content is not a valid image"
+                status_code=400, detail="File content is not a valid image"
             )
 
         image = Image.open(io.BytesIO(image_data))
 
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
+        if image.mode != "RGB":
+            image = image.convert("RGB")
 
         # Preprocess image
         inputs = processor(image, return_tensors="pt")
 
         # Use GPU if available
         if torch.cuda.is_available():
-            inputs = {k: v.to('cuda') for k, v in inputs.items()}
+            inputs = {k: v.to("cuda") for k, v in inputs.items()}
 
         # Generate caption with more parameters
         with torch.no_grad():
@@ -254,14 +258,14 @@ async def generate_detailed_caption(
                     num_beams=num_beams,
                     temperature=temperature,
                     do_sample=do_sample,
-                    early_stopping=True
+                    early_stopping=True,
                 )
             else:
                 output = model.generate(
                     **inputs,
                     max_length=max_length,
                     num_beams=num_beams,
-                    early_stopping=True
+                    early_stopping=True,
                 )
 
         caption = processor.decode(output[0], skip_special_tokens=True)
@@ -269,19 +273,21 @@ async def generate_detailed_caption(
         # Convert image to base64
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG")
-        image_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        image_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-        return JSONResponse(content={
-            "caption": caption,
-            "processed_image": image_b64,
-            "model_used": "Salesforce/blip-image-captioning-base",
-            "parameters": {
-                "max_length": max_length,
-                "num_beams": num_beams,
-                "temperature": temperature,
-                "do_sample": do_sample
+        return JSONResponse(
+            content={
+                "caption": caption,
+                "processed_image": image_b64,
+                "model_used": "Salesforce/blip-image-captioning-base",
+                "parameters": {
+                    "max_length": max_length,
+                    "num_beams": num_beams,
+                    "temperature": temperature,
+                    "do_sample": do_sample,
+                },
             }
-        })
+        )
 
     except HTTPException:
         raise

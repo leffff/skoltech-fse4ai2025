@@ -1,11 +1,12 @@
-import pytest
-import sys
-import os
-from PIL import Image
 import io
+import os
+import sys
+
+import pytest
+from PIL import Image
 
 # Add the backend directory to Python path so we can import from backend/app
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 # Now import the app
 from app.main import app
@@ -21,9 +22,9 @@ def client():
 @pytest.fixture
 def sample_image():
     """Create a sample image in memory for testing"""
-    img = Image.new('RGB', (100, 100), color='red')
+    img = Image.new("RGB", (100, 100), color="red")
     img_bytes = io.BytesIO()
-    img.save(img_bytes, format='JPEG')
+    img.save(img_bytes, format="JPEG")
     return img_bytes.getvalue()
 
 

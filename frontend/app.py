@@ -1,9 +1,10 @@
-import streamlit as st
-import requests
 import base64
-from PIL import Image
 import io
 import os
+
+import requests
+import streamlit as st
+from PIL import Image
 
 st.set_page_config(
     page_title="BLIP Image Captioning",
